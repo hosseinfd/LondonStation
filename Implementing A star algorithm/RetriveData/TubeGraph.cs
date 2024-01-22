@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using DocumentFormat.OpenXml.Office2010.ExcelAc;
 
 namespace Implementing_A_star_algorithm.RetriveData;
 
@@ -63,8 +64,15 @@ public class TubeGraph
     {
         public string id { get; set; }
         public string name { get; set; }
+        public List<TubeLineService> serviceTypes { get; set; }
     }
 
+    public class TubeLineService
+    {
+        public string name { get; set; }
+        public string uri { get; set; }
+    }
+    
     public class RouteSequence
     {
         public List<StationDetail> stations { get; set; }

@@ -8,12 +8,10 @@ namespace Implementing_A_star_algorithm.RetriveData;
 
 public class StationManager
 {
-    private readonly TubeGraph _tubeGraph;
     private static readonly string baseUrl = "https://api.tfl.gov.uk/Line";
 
-    public StationManager(TubeGraph tubeGraph)
+    public StationManager()
     {
-        _tubeGraph = tubeGraph;
     }
 
     private async Task<JsonElement> GetStationInfoAsync(string stationId)
@@ -24,9 +22,10 @@ public class StationManager
         var responseJson = JsonSerializer.Deserialize<JsonElement>(responseString);
         return responseJson;
     }
-    public async Task PopulateGraphAsync()
-    {
 
+    public async Task<TubeGraph> PopulateGraphAsync()
+    {
+        var tubeGraph = new TubeGraph();
         var tubeLines = await GetLines();
         foreach (var tubeLine in tubeLines)
         {
@@ -34,10 +33,13 @@ public class StationManager
             TubeGraph.Station previousStation = null;
             foreach (var stationDetail in stationDetails)
             {
-                var currentStation = _tubeGraph.Stations.GetValueOrDefault(stationDetail.name) ??
-                                     new TubeGraph.Station(stationDetail.name, stationDetail.lat,
-                                         stationDetail.lon,stationDetail.stationId,stationDetail.zone,
-                                         "");
+                var currentStation = tubeGraph.Stations.GetValueOrDefault(stationDetail.name) ??
+                                     new TubeGraph.Station(stationDetail.name,
+                                         stationDetail.lat,
+                                         stationDetail.lon,
+                                         stationDetail.stationId,
+                                         stationDetail.zone,
+                                         null);
 
                 if (!currentStation.lines.Contains(tubeLine))
                 {
@@ -49,10 +51,12 @@ public class StationManager
                     previousStation.Connect(currentStation);
                 }
 
-                _tubeGraph.AddOrUpdateStation(currentStation);
+                tubeGraph.AddOrUpdateStation(currentStation);
                 previousStation = currentStation;
             }
         }
+
+        return tubeGraph;
     }
 
     private async Task<List<TubeGraph.TubeLine>> GetLines()
@@ -67,7 +71,8 @@ public class StationManager
     {
         using var httpClient = new HttpClient();
 
-        var stationsResponse = await httpClient.GetStringAsync($"{baseUrl}/{lineId}/Route/Sequence/all");
+        var stationsResponse =
+            await httpClient.GetStringAsync($"{baseUrl}/{lineId}/Route/Sequence/all?serviceTypes=Regular");
         var routeSequence = JsonSerializer.Deserialize<TubeGraph.RouteSequence>(stationsResponse);
         return routeSequence.stations;
     }
