@@ -16,10 +16,10 @@ namespace Implementing_A_star_algorithm
             lon1 = DegreesToRadians(lon1);
             lat2 = DegreesToRadians(lat2);
             lon2 = DegreesToRadians(lon2);
-            double d_lat = lat2 - lat1;
-            double d_lon = lon2 - lon1;
-            double h = Math.Sin(d_lat / 2) * Math.Sin(d_lat / 2) + Math.Cos(lat1) * Math.Cos(lat2) * Math.Sin(d_lon / 2) * Math.Sin(d_lon / 2); //Haversine formula
-            return Math.Asin(Math.Sqrt(h)) * radius * 2;
+            var d_lat = lat2 - lat1;
+            var d_lon = lon2 - lon1;
+            var h = Math.Sin(d_lat / 2) * Math.Sin(d_lat / 2) + Math.Cos(lat1) * Math.Cos(lat2) * Math.Sin(d_lon / 2) * Math.Sin(d_lon / 2); //Haversine formula
+            return Math.Acos(Math.Sqrt(h)) * radius * 2;
         }
        
         private double ParseLatLon(string str)

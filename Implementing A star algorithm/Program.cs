@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Implementing_A_star_algorithm.Algorithm;
 using Implementing_A_star_algorithm.ExcelServices;
+using Implementing_A_star_algorithm.RetriveData;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Implementing_A_star_algorithm
@@ -36,8 +37,9 @@ namespace Implementing_A_star_algorithm
             
             // fetch data from tfl and save them into excel file
             
-            // var _tubeGraph = new TubeGraph();
-            // var sessionManager = new StationManager(_tubeGraph);
+            var _tubeGraph = new TubeGraph();
+            var sessionManager = new StationManager(_tubeGraph);
+            await sessionManager.PopulateGraphAsync();
             // await sessionManager.PopulateGraphAsync();
             // excelService.SaveToExcel(_tubeGraph, "D:\\Implementing-A-star-algorithm\\TubeData.xlsx");
             
