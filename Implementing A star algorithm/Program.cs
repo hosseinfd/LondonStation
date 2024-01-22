@@ -21,17 +21,15 @@ namespace Implementing_A_star_algorithm
             
             var sessionManager = new StationManager();
             var tubeGraph = await sessionManager.PopulateGraphAsync();
-            // excelService.SaveToExcel(_tubeGraph, "D:\\Implementing-A-star-algorithm\\TubeData.xlsx");
-            
+            var tubeStations = tubeGraph.ConvertToTubeStations();
             
             // run the algorithm
-            var pathFinder = new AStarPathFinder();
-            var tubeStations = excelService.ImportFromExcel("D:\\Implementing-A-star-algorithm\\TubeData.xlsx");
+            var pathFinder = new PathFinder();
             var startStation =
                 tubeStations.First(s => s.Name == "Baker Street Underground Station"); // replace with your actual station name
             var goalStation =
                 tubeStations.First(s => s.Name == "Seven Sisters"); // replace with your actual station name
-            var path = pathFinder.FindPath(startStation, goalStation);
+            var path = pathFinder.FindPathWithHeuristic(startStation, goalStation);
 
             foreach (var station in path)
             {

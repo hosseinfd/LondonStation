@@ -1,11 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Implementing_A_star_algorithm.Algorithm;
 
 public class PriorityQueue<T> where T : IComparable<T>
 {
-    private List<T> data = new List<T>();
+    private List<T> data = new();
 
     public void Enqueue(T item)
     {
@@ -58,5 +59,10 @@ public class PriorityQueue<T> where T : IComparable<T>
     public int Count()
     {
         return data.Count;
+    }
+    
+    public bool Any(Func<T, bool> predicate)
+    {
+        return data.Any(predicate);
     }
 }

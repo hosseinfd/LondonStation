@@ -8,6 +8,7 @@ namespace Implementing_A_star_algorithm.ExcelServices
 {
     public class ExcelService
     {
+        
         public void SaveToExcel(TubeGraph tubeGraph, string filePath)
         {
             using var workbook = new XLWorkbook();
@@ -19,7 +20,7 @@ namespace Implementing_A_star_algorithm.ExcelServices
             worksheet.Cell(1, 3).Value = "Longitude";
             worksheet.Cell(1, 4).Value = "Connected Stations";
             worksheet.Cell(1, 5).Value = "Tube Lines"; 
-            worksheet.Cell(1, 6).Value = "Zone number"; 
+            worksheet.Cell(1, 6).Value = "Zone number";
 
             int row = 2;
 

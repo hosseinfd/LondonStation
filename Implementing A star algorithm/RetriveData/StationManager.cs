@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -51,7 +53,9 @@ public class StationManager
                     previousStation.Connect(currentStation);
                 }
 
+                var departureInfo = await FetchDepartureTimesForStation(stationDetail.stationId);
                 tubeGraph.AddOrUpdateStation(currentStation);
+                tubeGraph.AddDepartureTimesToStation(stationDetail.name,departureInfo);
                 previousStation = currentStation;
             }
         }
@@ -75,5 +79,24 @@ public class StationManager
             await httpClient.GetStringAsync($"{baseUrl}/{lineId}/Route/Sequence/all?serviceTypes=Regular");
         var routeSequence = JsonSerializer.Deserialize<TubeGraph.RouteSequence>(stationsResponse);
         return routeSequence.stations;
+    }
+    
+    public async Task<List<TubeGraph.DepartureInfo>> FetchDepartureTimesForStation(string naptanId)
+    {
+        var httpClient = new HttpClient();
+        var apiUrl = $"https://api.tfl.gov.uk/StopPoint/{naptanId}/Arrivals";
+        var response = await httpClient.GetStringAsync(apiUrl);
+        var departures = JsonSerializer.Deserialize<List<TubeGraph.DepartureInfo>>(response);
+
+        return departures.Select(d => new TubeGraph.DepartureInfo
+        {
+            lineName = d.lineName,
+            destinationName = d.destinationName,
+            expectedArrival = DateTime.Parse(d.expectedArrival.ToString()),
+            direction = d.direction,
+            timeToStation = d.timeToStation,
+            timeToStationInMiunute = TimeSpan.FromSeconds(Convert.ToInt32(d.timeToStation))
+            // ... map other properties
+        }).ToList();
     }
 }
