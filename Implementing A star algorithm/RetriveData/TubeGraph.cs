@@ -23,12 +23,15 @@ public class TubeGraph
         }
     }
 
-    public void AddDepartureTimesToStation(string key , List<DepartureInfo> departureInfo)
+    public void AddDisruptionToLine(string lineName, TflDisruptionDto.Disruption disruptionDetails)
     {
-        Stations[key].InboundDepartures = departureInfo.Where(d => d.direction == "inbound").ToList();
-        Stations[key].OutboundDepartures = departureInfo.Where(d => d.direction == "outbound").ToList();
+        foreach (var line in Stations.SelectMany(station => station.Value.lines.Where(line => line.name == lineName)))
+        {
+            line.disruption = disruptionDetails;
+        }
     }
-    
+
+
     public class Station
     {
         public string name { get; set; }
@@ -36,23 +39,19 @@ public class TubeGraph
 
         public double lon { get; set; }
 
-        public string naptanId { get; set; }
         public string stationId { get; set; }
         public string zone { get; set; }
 
         public List<Station> connections { get; set; } = new();
         public List<TubeLine> lines { get; set; } = new();
-        public List<DepartureInfo> InboundDepartures { get; set; } = new List<DepartureInfo>();
-        public List<DepartureInfo> OutboundDepartures { get; set; } = new List<DepartureInfo>();
 
-        public Station(string name, double latitude, double longitude, string stationId, string zone, string naptanId)
+        public Station(string name, double latitude, double longitude, string stationId, string zone)
         {
             this.name = name;
             lon = longitude;
             this.stationId = stationId;
             this.zone = zone;
             lat = latitude;
-            this.naptanId = naptanId;
         }
 
         public Station()
@@ -68,8 +67,6 @@ public class TubeGraph
                 station.connections.Add(this); // Bidirectional connection
             }
         }
-
-        
     }
 
     public class TubeLine
@@ -77,6 +74,7 @@ public class TubeGraph
         public string id { get; set; }
         public string name { get; set; }
         public List<TubeLineService> serviceTypes { get; set; }
+        public TflDisruptionDto.Disruption disruption { get; set; }
     }
 
     public class TubeLineService
@@ -87,7 +85,8 @@ public class TubeGraph
 
     public class RouteSequence
     {
-        public List<StationDetail> stations { get; set; }
+        public List<StationDetail> stopPointSequences { get; set; }
+
     }
 
     public class StationDetail
@@ -98,18 +97,11 @@ public class TubeGraph
         public string stationId { get; set; }
         public string zone { get; set; }
     }
-
-    public class DepartureInfo
+    public class Timetable
     {
-        public string lineName { get; set; }
-        public string destinationName { get; set; }
-        public DateTime expectedArrival { get; set; }
-        public string direction { get; set; }
-        public TimeSpan timeToStationInMiunute { get; set; }
-        public int timeToStation { get; set; }
-
     }
-    
+
+
     public List<TubeStation> ConvertToTubeStations()
     {
         var tubeStations = new List<TubeStation>();
@@ -137,7 +129,7 @@ public class TubeGraph
 
         return tubeStations;
     }
-    
+
     private List<int> ParseZoneNumbers(string zoneString)
     {
         if (string.IsNullOrEmpty(zoneString))
@@ -163,5 +155,4 @@ public class TubeGraph
 
         return zones;
     }
-    
 }
