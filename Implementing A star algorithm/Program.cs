@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Implementing_A_star_algorithm.Algorithm;
 using Implementing_A_star_algorithm.ExcelServices;
+using Implementing_A_star_algorithm.Models;
 using Implementing_A_star_algorithm.RetriveData;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -16,27 +17,36 @@ namespace Implementing_A_star_algorithm
         static async Task Main(string[] args)
         {
             var sessionManager = new StationManager();
-            var tubeGraph = await sessionManager.PopulateGraphAsync();
-            
+            var fileService = new FileService();
+            var jsonFromFile = fileService.ReadJsonFromFile();
+            List<StationModel> stationModels;
+            if (string.IsNullOrWhiteSpace(jsonFromFile))
+            {
+                stationModels = await sessionManager.PopulateGraphAsync();
+                fileService.SaveJsonToFile(JsonSerializer.Serialize(stationModels));
+            }
+            else
+            {
+                stationModels = JsonSerializer.Deserialize<List<StationModel>>(jsonFromFile);
+            }
 
-            var stationTest = tubeGraph
-                .Where(q => q.Name == "Baker Street Underground Station")
-                .Select(q => q);
-            var json = JsonSerializer.Serialize(stationTest);
-
-            Console.WriteLine(json);
             // run the algorithm
-            // var pathFinder = new PathFinder();
-            // var startStation =
-            //     stationTest.First(s => s.Name == "Baker Street Underground Station"); // replace with your actual station name
-            // var goalStation =
-            //     tubeStations.First(s => s.Name == "Seven Sisters"); // replace with your actual station name
-            // var path = pathFinder.FindPathWithHeuristic(startStation, goalStation);
-            //
-            // foreach (var station in path)
-            // {
-            //     Console.WriteLine(station.Name);
-            // }
+            var startStation =
+                stationModels.Where(s => s.Name == "Preston Road Underground Station")
+                    .Select(q => new StationLineKey(q.Id, q.Lines.FirstOrDefault().LineId))
+                    .FirstOrDefault();
+            var goalStation =
+                stationModels.Where(s => s.Name == "North Harrow Underground Station")
+                    .Select(q => new StationLineKey(q.Id, q.Lines.FirstOrDefault().LineId)).FirstOrDefault();
+
+            var pathFinder = new PathFinder(stationModels);
+            var result = pathFinder.FindBestPath(startStation, goalStation);
+
+            var resultJson = JsonSerializer.Serialize(result);
+            foreach (var station in result)
+            {
+                Console.WriteLine(station.LineName);
+            }
         }
     }
 }

@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
@@ -15,7 +16,6 @@ public class StationManager
 
     public async Task<List<StationModel>> PopulateGraphAsync()
     {
-        var tubeGraph = new TubeGraph();
         var tubeLines = await GetLines();
         var stationModels = new List<StationModel>();
         var disruptionOfLines = await FetchDisruptionOfLines();
@@ -25,7 +25,6 @@ public class StationManager
             line.AddDisruption(disruptionOfLines, tubeLine.id);
 
             var stationDetails = await GetStationsOfLines(tubeLine.id);
-            // var connectionsModel = new List<ConnectionStationModel>();
             foreach (var stationDetail in stationDetails)
             {
                 var stationModel = new StationModel(stationDetail.name,
@@ -34,12 +33,6 @@ public class StationManager
                     stationDetail.lon,
                     stationDetail.zone);
 
-                var connectionStationModel = new ConnectionStationModel(stationDetail.name,
-                    stationDetail.stationId,
-                    stationDetail.lat,
-                    stationDetail.lon,
-                    stationDetail.zone);
-                // connectionsModel.Add(connectionStationModel);
 
                 stationModel.AddLine(line);
                 stationModels.Add(stationModel);
@@ -77,6 +70,17 @@ public class StationManager
             }
         }
 
+        // foreach (var stationModel in stationModels)
+        // {
+        //     await Task.Delay(200);
+        //     foreach (var connection in stationModel.Connections)
+        //     {
+        //         var arrivalTime =
+        //             await FetchTimeTableForStation(stationModel.Id, connection.Id, stationModel.Lines.First().LineId);
+        //         connection.TimeTables = arrivalTime.Timetables;
+        //     }
+        // }
+
         return stationModels;
     }
 
@@ -97,12 +101,17 @@ public class StationManager
                 $"https://api.tfl.gov.uk/Line/{lineId}/Route/Sequence/all?serviceTypes=Regular");
         var routeSequenceJsonElement = JsonSerializer.Deserialize<JsonElement>(stationsResponse);
 
+        var a = new List<TubeGraph.StationDetail>();
         var stopPoints = routeSequenceJsonElement
             .GetProperty("stopPointSequences")
             .EnumerateArray()
             .Where(q => q.GetProperty("direction").GetString() == "inbound")
-            .Select(q => q
+            .SelectMany(q => q
                 .GetProperty("stopPoint").EnumerateArray()
+                .Where(stopPoint => stopPoint
+                    .GetProperty("modes")
+                    .EnumerateArray()
+                    .Any(mode => mode.GetString() == "tube" || mode.GetString() == "bus"))
                 .Select(stopPoint => new TubeGraph.StationDetail
                 {
                     lat = stopPoint.GetProperty("lat").GetDouble(),
@@ -110,19 +119,149 @@ public class StationManager
                     name = stopPoint.GetProperty("name").GetString(),
                     stationId = stopPoint.GetProperty("stationId").GetString(),
                     zone = stopPoint.GetProperty("zone").GetString()
-                }).ToList()).FirstOrDefault();
+                }))
+            .GroupBy(s => s.stationId)
+            .Select(g => g.ToList())
+            .ToList();
 
+        foreach (var stopPoint in stopPoints)
+        {
+            a.AddRange(stopPoint);
+        }
 
-        return stopPoints;
+        return a;
     }
 
-    public async Task FetchTimeTableForStation(string fromStopPointId, string toStopPointId, string lineId)
+    public async
+        Task<(List<ConnectionStationModel.IntervalTime> IntervalTimes, List<ConnectionStationModel.TimeTable> Timetables
+            )> FetchTimeTableForStation(string fromStopPointId, string toStopPointId, string lineId)
     {
         var httpClient = new HttpClient();
         var url = $"https://api.tfl.gov.uk/Line/{lineId}/Timetable/{fromStopPointId}/to/{toStopPointId}";
-        var response = await httpClient.GetStringAsync(url);
-        var timetable = JsonSerializer.Deserialize<TubeGraph.Timetable>(response);
-        // return timetable;
+        
+
+        var intervalTimes = new List<ConnectionStationModel.IntervalTime>();
+        var timeTables = new List<ConnectionStationModel.TimeTable>();
+        try
+        {
+            var response = await httpClient.GetStringAsync(url);
+            var jsonElement = JsonSerializer.Deserialize<JsonElement>(response);
+            if (jsonElement.TryGetProperty("timetable", out var timetableElement) &&
+                timetableElement.TryGetProperty("departureStopId", out var departureStopIdElement))
+            {
+                var departureStopId = jsonElement.GetProperty("timetable").GetProperty("departureStopId").GetString();
+
+                if (departureStopId == fromStopPointId)
+                {
+                    var routes = jsonElement.GetProperty("timetable").GetProperty("routes").EnumerateArray();
+                    foreach (var route in routes)
+                    {
+                        var stationIntervals = route.GetProperty("stationIntervals").EnumerateArray();
+                        foreach (var stationInterval in stationIntervals)
+                        {
+                            var intervals = stationInterval.GetProperty("intervals").EnumerateArray();
+                            foreach (var interval in intervals)
+                            {
+                                var stopId = interval.GetProperty("stopId").GetString();
+                                if (stopId == toStopPointId)
+                                {
+                                    var intervalId = Convert.ToInt32(stationInterval.GetProperty("id").GetString());
+                                    var timeToArrival = Convert.ToInt32(interval.GetProperty("timeToArrival").GetDouble());
+                                    intervalTimes.Add(new ConnectionStationModel.IntervalTime
+                                    {
+                                        IntervalId = intervalId,
+                                        StopId = stopId,
+                                        TimeToArrival = timeToArrival
+                                    });
+                                }
+                            }
+                        }
+
+                        // Accessing schedules within each route
+                        if (route.TryGetProperty("schedules", out var schedules))
+                        {
+                            foreach (var scheduleElement in schedules.EnumerateArray())
+                            {
+                                var timetable = ParseTimeTable(scheduleElement);
+                                timeTables.Add(timetable);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
+        return (IntervalTimes: intervalTimes, Timetables: timeTables); 
+
+    }
+
+    public ConnectionStationModel.TimeTable ParseTimeTable(JsonElement scheduleElement)
+    {
+        var timeTable = new ConnectionStationModel.TimeTable
+        {
+            KnownJourneys = new List<ConnectionStationModel.KnownJourney>(),
+            Periods = new List<ConnectionStationModel.Period>()
+        };
+
+        // Parse the schedule name to IntervalEnum
+        var scheduleName = scheduleElement.GetProperty("name").GetString();
+        timeTable.IntervalEnum = scheduleName switch
+        {
+            "Monday - Friday" => ConnectionStationModel.TimeTableEnum.Monday_Friday,
+            "Saturdays and Public Holidays" => ConnectionStationModel.TimeTableEnum.Saturdays_Holidays,
+            "Sunday" => ConnectionStationModel.TimeTableEnum.Sunday,
+            _ => ConnectionStationModel.TimeTableEnum.Ivalid
+        };
+
+        // Parse first journey
+        var firstJourney = scheduleElement.GetProperty("firstJourney");
+        timeTable.FirstJourney = new TimeSpan(
+            Convert.ToInt32(firstJourney.GetProperty("hour").GetString()),
+            Convert.ToInt32(firstJourney.GetProperty("minute").GetString()),
+            0);
+
+        // Parse last journey
+        var lastJourney = scheduleElement.GetProperty("lastJourney");
+        timeTable.LastJourney = new TimeSpan(
+            Convert.ToInt32(lastJourney.GetProperty("hour").GetString()),
+            Convert.ToInt32(lastJourney.GetProperty("minute").GetString()),
+            0);
+
+        // Parse known journeys
+        foreach (var journeyElement in scheduleElement.GetProperty("knownJourneys").EnumerateArray())
+        {
+            var knownJourney = new ConnectionStationModel.KnownJourney
+            {
+                Time = new TimeSpan(
+                    Convert.ToInt32(journeyElement.GetProperty("hour").GetString()),
+                    Convert.ToInt32(journeyElement.GetProperty("minute").GetString()),
+                    0),
+                IntervalId = journeyElement.GetProperty("intervalId").GetInt32()
+            };
+            timeTable.KnownJourneys.Add(knownJourney);
+        }
+
+        // Parse periods
+        foreach (var periodElement in scheduleElement.GetProperty("periods").EnumerateArray())
+        {
+            var period = new ConnectionStationModel.Period
+            {
+                FromTime = new TimeSpan(
+                    Convert.ToInt32(periodElement.GetProperty("fromTime").GetProperty("hour").GetString()),
+                    Convert.ToInt32(periodElement.GetProperty("fromTime").GetProperty("minute").GetString()), 
+                    0),
+                ToTime = new TimeSpan(
+                    Convert.ToInt32(periodElement.GetProperty("toTime").GetProperty("hour").GetString()),
+                    Convert.ToInt32(periodElement.GetProperty("toTime").GetProperty("minute").GetString()),
+                    0)
+            };
+            timeTable.Periods.Add(period);
+        }
+
+        return timeTable;
     }
 
     public async Task<List<TflDisruptionDto.Disruption>> FetchDisruptionOfLines()

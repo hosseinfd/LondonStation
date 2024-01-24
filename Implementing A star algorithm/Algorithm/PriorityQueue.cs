@@ -6,63 +6,32 @@ namespace Implementing_A_star_algorithm.Algorithm;
 
 public class PriorityQueue<T> where T : IComparable<T>
 {
-    private List<T> data = new();
+    private List<(T item, double priority)> items = new List<(T item, double priority)>();
 
-    public void Enqueue(T item)
+    public void Enqueue(T item, double priority)
     {
-        data.Add(item);
-        int childIndex = data.Count - 1;
-        while (childIndex > 0)
-        {
-            int parentIndex = (childIndex - 1) / 2;
-            if (data[childIndex].CompareTo(data[parentIndex]) >= 0) break;
-            T tmp = data[childIndex];
-            data[childIndex] = data[parentIndex];
-            data[parentIndex] = tmp;
-            childIndex = parentIndex;
-        }
+        items.Add((item, priority));
+        items.Sort((x, y) => x.priority.CompareTo(y.priority));
     }
 
     public T Dequeue()
     {
-        int lastIndex = data.Count - 1;
-        T frontItem = data[0];
-        data[0] = data[lastIndex];
-        data.RemoveAt(lastIndex);
-
-        --lastIndex;
-        int parentIndex = 0;
-        while (true)
+        if (items.Count == 0)
         {
-            int leftChildIndex = parentIndex * 2 + 1;
-            if (leftChildIndex > lastIndex) break;
-            int rightChildIndex = leftChildIndex + 1;
-            if (rightChildIndex <= lastIndex && data[rightChildIndex].CompareTo(data[leftChildIndex]) < 0)
-                leftChildIndex = rightChildIndex;
-            if (data[parentIndex].CompareTo(data[leftChildIndex]) <= 0) break;
-
-            T tmp = data[parentIndex];
-            data[parentIndex] = data[leftChildIndex];
-            data[leftChildIndex] = tmp;
-            parentIndex = leftChildIndex;
-        }
-        return frontItem;
-    }
-
-    public T Peek()
-    {
-        if (data.Count == 0)
             throw new InvalidOperationException("The queue is empty.");
-        return data[0];
+        }
+        var item = items[0].item;
+        items.RemoveAt(0);
+        return item;
     }
 
-    public int Count()
+    public bool IsEmpty => !items.Any();
+
+    public bool Contains(T item)
     {
-        return data.Count;
+        return items.Any(x => x.item.Equals(item));
     }
-    
-    public bool Any(Func<T, bool> predicate)
-    {
-        return data.Any(predicate);
-    }
+
+    public int Count => items.Count;
+
 }

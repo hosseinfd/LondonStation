@@ -6,13 +6,18 @@ namespace Implementing_A_star_algorithm.Models;
 
 public class LineModel
 {
-    public string LineId { get; private set; }
-    public string Name { get; private set; }
-    public List<DisruptionOfLineModel> Disruption { get;private set; }
+    public string LineId { get;  set; }
+    public string Name { get;  set; }
+    public List<DisruptionOfLineModel> Disruption { get; set; }
     public LineModel(string lineId, string name)
     {
         LineId = lineId;
         Name = name;
+    }
+
+    public LineModel()
+    {
+        
     }
 
     public void AddDisruption(DisruptionOfLineModel disruptionOfLineModel)

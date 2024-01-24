@@ -1,129 +1,182 @@
 ﻿using System;
 using System.Collections.Generic;
-using Implementing_A_star_algorithm.ExcelServices;
-
-namespace Implementing_A_star_algorithm.Algorithm;
+using System.Linq;
+using Implementing_A_star_algorithm.Algorithm;
+using Implementing_A_star_algorithm.Models;
 
 public class PathFinder
 {
-    public List<TubeStation> FindPathWithAStar(TubeStation start, TubeStation goal)
+    private Dictionary<StationLineKey, StationModel> stations;
+
+    public PathFinder(IEnumerable<StationModel> stationList)
     {
-        var openSet = new HashSet<TubeStation> { start };
-        var cameFrom = new Dictionary<TubeStation, TubeStation>();
-        var gScore = new Dictionary<TubeStation, double> { { start, 0 } };
-        var fScore = new Dictionary<TubeStation, double> { { start, HaversineDistance(start, goal) } };
+        stations = new Dictionary<StationLineKey, StationModel>();
 
-        var priorityQueue = new PriorityQueue<TubeStationNode>();
-        priorityQueue.Enqueue(new TubeStationNode(start, HaversineDistance(start, goal)));
-
-        while (priorityQueue.Count() > 0)
+        foreach (var station in stationList)
         {
-            var current = priorityQueue.Dequeue().TubeStation;
-            if (current == goal)
-                return ReconstructPath(cameFrom, current);
-
-            openSet.Remove(current);
-
-            foreach (var neighbor in current.ConnectedTubeStations)
+            foreach (var line in station.Lines)
             {
-                var tentativeGScore = gScore[current] + HaversineDistance(current, neighbor);
+                var key = new StationLineKey(station.Id, line.LineId);
+                // Assumes StationModel objects can represent the same station on different lines
+                stations[key] = station;
+            }
+        }
+    }
 
-                if (tentativeGScore < gScore.GetValueOrDefault(neighbor, double.MaxValue))
+    public List<PathStep> FindBestPath(StationLineKey startKey, StationLineKey endKey)
+    {
+        // Initialization
+        var openSet = new PriorityQueue<StationLineKey>();
+        var cameFrom = new Dictionary<StationLineKey, StationLineKey>();
+        var gScore = new Dictionary<StationLineKey, double>();
+
+        foreach (var key in stations.Keys)
+        {
+            gScore[key] = double.MaxValue;
+        }
+
+        gScore[startKey] = 0;
+        openSet.Enqueue(startKey, 0);
+
+        while (!openSet.IsEmpty)
+        {
+            var currentKey = openSet.Dequeue();
+            var currentStation = stations[currentKey];
+
+            if (currentKey.Equals(endKey))
+            {
+                return ReconstructPath(cameFrom, currentKey);
+            }
+
+            foreach (var connection in currentStation.Connections)
+            {
+                foreach (var line in currentStation.Lines)
                 {
-                    cameFrom[neighbor] = current;
-                    gScore[neighbor] = tentativeGScore;
-                    fScore[neighbor] = gScore[neighbor] + HaversineDistance(neighbor, goal);
+                    var neighborKey = new StationLineKey(connection.Id, line.LineId);
+                    if (!stations.ContainsKey(neighborKey)) continue;
 
-                    if (!openSet.Contains(neighbor))
+                    var neighborStation = stations[neighborKey];
+                    double travelCost = CalculateTravelCost(currentStation, neighborStation);
+                    double tentativeGScore = gScore[currentKey] + travelCost;
+
+                    if (tentativeGScore < gScore[neighborKey])
                     {
-                        openSet.Add(neighbor);
-                        priorityQueue.Enqueue(new TubeStationNode(neighbor, fScore[neighbor]));
+                        cameFrom[neighborKey] = currentKey;
+                        gScore[neighborKey] = tentativeGScore;
+
+                        if (!openSet.Contains(neighborKey))
+                        {
+                            openSet.Enqueue(neighborKey, tentativeGScore);
+                        }
                     }
                 }
             }
         }
 
-        return new List<TubeStation>(); // No path was found
+        return null; // Path not found
     }
 
-    public List<TubeStation> FindPathWithHeuristic(TubeStation start, TubeStation goal)
+    private List<PathStep> ReconstructPath(Dictionary<StationLineKey, StationLineKey> cameFrom, StationLineKey endKey)
     {
-        var openSet = new PriorityQueue<TubeStationNode>();
-        var cameFrom = new Dictionary<TubeStation, TubeStation>();
-        var closedSet = new HashSet<TubeStation>();
+        var totalPath = new List<PathStep>();
+        var currentKey = endKey;
 
-        openSet.Enqueue(new TubeStationNode(start, 0));
-
-        while (openSet.Count() > 0)
+        while (cameFrom.ContainsKey(currentKey))
         {
-            var current = openSet.Dequeue().TubeStation;
-            if (current == goal)
+            var currentStation = stations[currentKey];
+            var previousKey = cameFrom[currentKey];
+            var previousStation = stations[previousKey];
+
+            var step = new PathStep
             {
-                return ReconstructPath(cameFrom, current);
-            }
+                StationName = currentStation.Name,
+                LineName = currentStation.Lines.FirstOrDefault(ln => ln.LineId == currentKey.LineId)?.Name ?? "Unknown"
+            };
+            totalPath.Insert(0, step);
 
-            closedSet.Add(current);
-
-            foreach (var neighbor in current.ConnectedTubeStations)
-            {
-                if (closedSet.Contains(neighbor))
-                {
-                    continue;
-                }
-
-                var estimatedDistance = HaversineDistance(neighbor, goal);
-                if (!openSet.Any(n => n.TubeStation == neighbor))
-                {
-                    cameFrom[neighbor] = current;
-                    openSet.Enqueue(new TubeStationNode(neighbor, estimatedDistance));
-                }
-            }
+            currentKey = previousKey;
         }
 
-        return new List<TubeStation>(); // No path was found
-    }
-
-    #region Private_methods
-
-    private List<TubeStation> ReconstructPath(Dictionary<TubeStation, TubeStation> cameFrom, TubeStation current)
-    {
-        var totalPath = new List<TubeStation> { current };
-        while (cameFrom.ContainsKey(current))
+        // Add the start step at the beginning of the path
+        var startStation = stations[currentKey];
+        totalPath.Insert(0, new PathStep
         {
-            current = cameFrom[current];
-            totalPath.Insert(0, current);
-        }
+            StationName = startStation.Name,
+            LineName = startStation.Lines.FirstOrDefault(ln => ln.LineId == currentKey.LineId)?.Name ?? "Unknown"
+        });
 
         return totalPath;
     }
 
-    private double HaversineDistance(TubeStation station1, TubeStation station2)
+    private double CalculateTravelCost(StationModel fromStation, StationModel toStation)
     {
-        double R = 6371; // Earth's radius in km
-        var lat1 = station1.Latitude * Math.PI / 180;
-        var lat2 = station2.Latitude * Math.PI / 180;
-        var deltaLat = lat2 - lat1;
-        var deltaLon = (station2.Longitude - station1.Longitude) * Math.PI / 180;
-
-        var a = Math.Sin(deltaLat / 2) * Math.Sin(deltaLat / 2) +
-                Math.Cos(lat1) * Math.Cos(lat2) *
-                Math.Sin(deltaLon / 2) * Math.Sin(deltaLon / 2);
-
-        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-        return R * c; // Distance in km
+        // Calculate geographical distance, or use a predefined travel time.
+        // Add additional cost if switching lines.
+        return CalculateGeographicalDistance(fromStation.Lat, fromStation.Lon, toStation.Lat, toStation.Lon);
     }
-    
-    // private double CalculateAverageTravelTime(TubeStation current, TubeStation goal)
-    // {
-    //     // Example implementation, assuming direct connections
-    //     // This needs to be adjusted based on your network's structure
-    //     var departures = current == "inbound" ? current.InboundDepartures : current.OutboundDepartures;
-    //     var totalTravelTime = departures
-    //         .Where(d => d.destinationName == goal.name)
-    //         .Average(d => d.timeToStationInMiunute.TotalHours);
-    //
-    //     return totalTravelTime;
-    // }
 
-    #endregion
+    private double CalculateGeographicalDistance(double lat1, double lon1, double lat2, double lon2)
+    {
+        var earthRadiusKm = 6371;
+
+        var dLat = ToRadians(lat2 - lat1);
+        var dLon = ToRadians(lon2 - lon1);
+
+        lat1 = ToRadians(lat1);
+        lat2 = ToRadians(lat2);
+
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                Math.Sin(dLon / 2) * Math.Sin(dLon / 2) * Math.Cos(lat1) * Math.Cos(lat2);
+        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+        return earthRadiusKm * c;
+    }
+
+    private double ToRadians(double degrees)
+    {
+        return degrees * Math.PI / 180.0;
+    }
+}
+
+public class StationLineKey : IComparable<StationLineKey>
+{
+    public string StationId { get; }
+    public string LineId { get; }
+
+    public StationLineKey(string stationId, string lineId)
+    {
+        StationId = stationId;
+        LineId = lineId;
+    }
+
+    public int CompareTo(StationLineKey other)
+    {
+        if (other == null) return 1;
+
+        // You can adjust the comparison logic to fit your needs
+        int stationIdComparison = StationId.CompareTo(other.StationId);
+        if (stationIdComparison != 0) return stationIdComparison;
+
+        return LineId.CompareTo(other.LineId);
+    }
+
+    // Override Equals and GetHashCode to use StationLineKey as Dictionary keys
+    public override bool Equals(object obj)
+    {
+        return obj is StationLineKey other &&
+               StationId == other.StationId &&
+               LineId == other.LineId;
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(StationId, LineId);
+    }
+}
+
+public class PathStep
+{
+    public string StationName { get; set; }
+
+    public string LineName { get; set; }
+    // Additional properties like TravelTime can be added if needed
 }
